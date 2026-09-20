@@ -1,0 +1,990 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+  Play, Users, User, Calculator, Settings, Volume2, VolumeX, 
+  Trophy, ChevronRight, CheckCircle, XCircle, RotateCcw, 
+  ArrowRight, ShieldAlert, BarChart3, Medal, Crown, List,
+  Info, Star, Zap, Target, BookOpen, Clock, Edit3, Lock, Rotate3d
+} from 'lucide-react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend 
+} from 'recharts';
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+  static getDerivedStateFromError(error) { return { hasError: true }; }
+  componentDidCatch(error, errorInfo) { this.setState({ error, errorInfo }); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-10 bg-slate-950 text-red-400 font-mono text-center">
+          <XCircle size={60} className="mb-4 animate-bounce"/>
+          <h1 className="text-3xl font-bold mb-4">SISTEM ERROR</h1>
+          <p className="mb-6 text-slate-300">Mohon maaf, terjadi kesalahan logika pada sistem. Silakan muat ulang.</p>
+          <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-8 py-3 rounded-xl hover:bg-red-500 transition-colors font-bold tracking-widest">
+            MUAT ULANG APLIKASI
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const TEAM_STYLES = [
+  { bg: "from-blue-600 to-blue-900", border: "border-blue-400", shadow: "shadow-[0_0_15px_rgba(59,130,246,0.5)]", text: "text-blue-100", hex: "#3b82f6", glow: "text-blue-400" },
+  { bg: "from-red-600 to-red-900", border: "border-red-400", shadow: "shadow-[0_0_15px_rgba(239,68,68,0.5)]", text: "text-red-100", hex: "#ef4444", glow: "text-red-400" },
+  { bg: "from-green-600 to-green-900", border: "border-green-400", shadow: "shadow-[0_0_15px_rgba(34,197,94,0.5)]", text: "text-green-100", hex: "#22c55e", glow: "text-green-400" },
+  { bg: "from-yellow-500 to-yellow-800", border: "border-yellow-300", shadow: "shadow-[0_0_15px_rgba(234,179,8,0.5)]", text: "text-yellow-100", hex: "#eab308", glow: "text-yellow-400" },
+  { bg: "from-fuchsia-600 to-fuchsia-900", border: "border-fuchsia-400", shadow: "shadow-[0_0_15px_rgba(217,70,239,0.5)]", text: "text-fuchsia-100", hex: "#d946ef", glow: "text-fuchsia-400" }
+];
+
+const THEME = {
+  panel: "bg-slate-900/80 backdrop-blur-lg border border-purple-500/30 shadow-[0_4px_30px_rgba(0,0,0,0.5)]",
+  panelNeon: "bg-slate-900/90 backdrop-blur-xl border border-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.4)]",
+  primaryBtn: "bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition-all shadow-[0_0_15px_rgba(147,51,234,0.6)] hover:shadow-[0_0_25px_rgba(168,85,247,0.8)] border border-purple-400 active:scale-95",
+  secondaryBtn: "bg-slate-800 hover:bg-slate-700 text-purple-300 font-semibold rounded-xl border border-purple-500/50 transition-all active:scale-95",
+  dangerBtn: "bg-red-600 hover:bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] border border-red-400 active:scale-95",
+  glowPurple: "text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-500 drop-shadow-[0_0_10px_rgba(168,85,247,0.6)]"
+};
+
+function PlusCircle(props) { return <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>; }
+function MinusCircle(props) { return <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>; }
+function DivideCircle(props) { return <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><circle cx="12" cy="8" r="1" fill="currentColor"/><circle cx="12" cy="16" r="1" fill="currentColor"/></svg>; }
+
+const INITIAL_STUDENTS = Array.from({ length: 32 }, (_, i) => ({
+  id: i + 1, name: `Siswa ${i + 1}`, score: 0, correct: 0, wrong: 0, timeout: 0, attempts: 0, badges: [], teamId: null
+}));
+
+const BADGE_DEFINITIONS = [
+  { id: 'b1', name: 'Ahli Hitung', desc: 'Min. 100 poin dlm 1 sesi', icon: Trophy, req: (s) => s.score >= 100 },
+  { id: 'b2', name: 'Jago Penjumlahan', desc: '5 Benar Penjumlahan', icon: PlusCircle, req: (s, stats) => (stats?.add || 0) >= 5 },
+  { id: 'b3', name: 'Master Pengurangan', desc: '5 Benar Pengurangan', icon: MinusCircle, req: (s, stats) => (stats?.sub || 0) >= 5 },
+  { id: 'b4', name: 'Juara Perkalian', desc: '5 Benar Perkalian', icon: XCircle, req: (s, stats) => (stats?.mul || 0) >= 5 },
+  { id: 'b5', name: 'Ahli Pembagian', desc: '5 Benar Pembagian', icon: DivideCircle, req: (s, stats) => (stats?.div || 0) >= 5 },
+  { id: 'b6', name: 'Pejuang Matematika', desc: 'Selesai min. 10 soal', icon: ShieldAlert, req: (s) => s.attempts >= 10 },
+  { id: 'b7', name: 'Ketelitian Tinggi', desc: 'Akurasi 90% (min 10 soal)', icon: Target, req: (s) => s.attempts >= 10 && (s.correct / s.attempts) >= 0.9 },
+  { id: 'b8', name: 'Team Player', desc: 'Main di Mode Battle', icon: Users, req: (s, stats, isBattle) => isBattle && s.attempts >= 1 },
+  { id: 'b9', name: 'Penyumbang Poin', desc: '50 Poin di Mode Battle', icon: Star, req: (s, stats, isBattle) => isBattle && s.score >= 50 },
+  { id: 'b10', name: 'Semangat Belajar', desc: 'Selesai permainan', icon: BookOpen, req: (s, stats, isBattle, isEnd) => isEnd && s.attempts > 0 }
+];
+
+const generateMathProblem = (op, diff) => {
+  let num1 = 0, num2 = 0, answer = 0, operatorString = '', textOp = '';
+  const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+  switch (op) {
+    case 'addition':
+      operatorString = '+'; textOp = 'ditambah';
+      if (diff === 'easy') { num1 = rand(100, 999); num2 = rand(100, 999); }
+      else if (diff === 'medium') { num1 = rand(1000, 9999); num2 = rand(1000, 9999); }
+      else { num1 = rand(10000, 99999); num2 = rand(10000, 99999); }
+      answer = num1 + num2; break;
+    case 'subtraction':
+      operatorString = '-'; textOp = 'dikurangi';
+      if (diff === 'easy') { num1 = rand(200, 999); num2 = rand(100, num1 - 1); }
+      else if (diff === 'medium') { num1 = rand(2000, 9999); num2 = rand(1000, num1 - 1); }
+      else { num1 = rand(20000, 99999); num2 = rand(10000, num1 - 1); }
+      answer = num1 - num2; break;
+    case 'multiplication':
+      operatorString = '×'; textOp = 'dikali';
+      num1 = rand(100, 999);
+      if (diff === 'easy') num2 = rand(2, 9);
+      else if (diff === 'medium') num2 = rand(10, 99);
+      else num2 = rand(100, 999);
+      answer = num1 * num2; break;
+    case 'division':
+      operatorString = '÷'; textOp = 'dibagi';
+      if (diff === 'easy') { num2 = rand(2, 9); answer = rand(12, 111); num1 = answer * num2; }
+      else if (diff === 'medium') {
+        if (Math.random() > 0.5) { num2 = rand(2, 9); answer = rand(112, 999); } 
+        else { num2 = rand(10, 99); answer = rand(10, 99); }
+        num1 = answer * num2;
+      } else { num2 = rand(10, 99); answer = rand(41, 99); num1 = answer * num2; }
+      break;
+    default:
+      num1 = 1; num2 = 1; answer = 2; operatorString = '+'; textOp = 'ditambah';
+  }
+
+  return { 
+    num1, num2, answer, operatorString, 
+    spokenText: `Pertanyaan. Berapakah hasil dari ${num1} ${textOp} ${num2}?`
+  };
+};
+
+const speakText = (text, isMuted) => {
+  if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel(); 
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'id-ID';
+  const voices = window.speechSynthesis.getVoices();
+  const idVoices = voices.filter(v => v.lang.includes('id'));
+  utterance.voice = idVoices.find(v => v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('cowok')) || idVoices[0];
+  utterance.rate = 0.9;
+  window.speechSynthesis.speak(utterance);
+};
+
+// Menggantikan fungsi 'eval' dan 'Function' yang rentan diblokir sistem CSP.
+const evaluateMathExpression = (expr) => {
+  try {
+    let s = expr.replace(/×/g, '*').replace(/÷/g, '/').replace(/[^0-9+\-*/.]/g, '');
+    if (!s) return '';
+    s = s.replace(/^-/, '0-').replace(/\++/g, '+').replace(/--/g, '+').replace(/\+-|-\+/g, '-');
+    
+    const evaluateMulDiv = (str) => {
+      let muls = str.split('*');
+      let total = 1;
+      for (let i = 0; i < muls.length; i++) {
+        let divs = muls[i].split('/');
+        let divTotal = parseFloat(divs[0] || 0);
+        for (let j = 1; j < divs.length; j++) divTotal /= parseFloat(divs[j] || 1);
+        total *= divTotal;
+      }
+      return total;
+    };
+
+    let addends = s.split('+');
+    let total = 0;
+    for (let i = 0; i < addends.length; i++) {
+      let subs = addends[i].split('-');
+      let subTotal = evaluateMulDiv(subs[0]);
+      for (let j = 1; j < subs.length; j++) subTotal -= evaluateMulDiv(subs[j]);
+      total += subTotal;
+    }
+    return Number.isFinite(total) ? String(total) : 'Err';
+  } catch (e) {
+    return 'Err';
+  }
+};
+
+const CalculatorPad = ({ onAnswer, disabled, lockMessage }) => {
+  const [display, setDisplay] = useState('');
+
+  const handleInput = (val) => {
+    if (disabled || display.length > 15) return;
+    setDisplay(prev => (prev === 'Err' || prev === 'NaN' ? String(val) : prev + val));
+  };
+  
+  const handleEqual = () => {
+    if (disabled || !display || display === 'Err') return;
+    setDisplay(evaluateMathExpression(display));
+  };
+
+  const handleClear = () => !disabled && setDisplay('');
+  const handleDel = () => !disabled && setDisplay(prev => prev !== 'Err' ? prev.slice(0, -1) : '');
+  
+  const handleSubmit = () => {
+    if (disabled || !display || display === 'Err') return;
+    const result = evaluateMathExpression(display);
+    setDisplay(result);
+    if (result !== 'Err') setTimeout(() => onAnswer(parseFloat(result)), 150);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (disabled) return;
+      if (/[0-9]/.test(e.key)) handleInput(e.key);
+      else if (e.key === 'Backspace') handleDel();
+      else if (e.key === 'Enter') handleSubmit();
+      else if (e.key === '=' || e.key === 'Enter') handleEqual();
+      else if (e.key === 'Escape') handleClear();
+      else if (['+', '-', '*', '/'].includes(e.key)) {
+        const map = {'*': '×', '/': '÷'};
+        handleInput(map[e.key] || e.key);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [display, disabled]);
+
+  return (
+    <div className={`relative ${THEME.panel} p-2 lg:p-4 rounded-3xl h-full flex flex-col shadow-[0_0_30px_rgba(0,0,0,0.5)] border-4 border-slate-700 bg-slate-800 min-h-0`}>
+      {disabled && (
+        <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-[4px] rounded-[1.25rem] flex flex-col items-center justify-center border-4 border-red-500/50">
+           <Lock className="w-12 h-12 lg:w-16 lg:h-16 text-red-500 mb-2 animate-bounce" />
+           <span className="text-red-400 font-black tracking-widest text-xl lg:text-2xl animate-pulse text-center px-2 leading-tight">
+             TERKUNCI<br/><span className="text-xs lg:text-sm font-bold text-slate-300 tracking-normal">{lockMessage || '(Pastikan Soal Sudah Dimulai)'}</span>
+           </span>
+        </div>
+      )}
+      
+      {/* Layar Digital Kalkulator */}
+      <div className="bg-[#0a192f] border-4 border-slate-900 rounded-2xl mb-2 lg:mb-4 h-16 lg:h-24 flex items-center justify-end px-4 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] overflow-hidden shrink-0">
+        <span className="text-4xl lg:text-6xl font-mono font-black text-cyan-400 drop-shadow-[0_0_12px_rgba(34,211,238,0.9)] tracking-widest truncate">
+           {display || '0'}
+        </span>
+      </div>
+
+      {/* Grid Tombol Kalkulator Solid */}
+      <div className="grid grid-cols-4 gap-1 lg:gap-2 flex-1 min-h-0">
+        <button className="bg-red-600 hover:bg-red-500 text-white font-black text-lg lg:text-2xl rounded-xl shadow-[0_4px_0_#991b1b] active:shadow-none active:translate-y-1 transition-all" onClick={handleClear}>AC</button>
+        <button className="bg-amber-600 hover:bg-amber-500 text-white font-black text-lg lg:text-2xl rounded-xl shadow-[0_4px_0_#92400e] active:shadow-none active:translate-y-1 transition-all" onClick={handleDel}>DEL</button>
+        <button className="bg-slate-700 hover:bg-slate-600 text-cyan-400 font-black text-2xl lg:text-4xl rounded-xl shadow-[0_4px_0_#334155] active:shadow-none active:translate-y-1 transition-all pb-1" onClick={() => handleInput('÷')}>÷</button>
+        <button className="bg-slate-700 hover:bg-slate-600 text-cyan-400 font-black text-2xl lg:text-4xl rounded-xl shadow-[0_4px_0_#334155] active:shadow-none active:translate-y-1 transition-all pb-1" onClick={() => handleInput('×')}>×</button>
+
+        {[7, 8, 9].map(n => <button key={n} className="bg-slate-200 hover:bg-white text-slate-900 font-black text-2xl lg:text-4xl rounded-xl shadow-[0_4px_0_#94a3b8] active:shadow-none active:translate-y-1 transition-all" onClick={() => handleInput(n)}>{n}</button>)}
+        <button className="bg-slate-700 hover:bg-slate-600 text-cyan-400 font-black text-3xl lg:text-5xl rounded-xl shadow-[0_4px_0_#334155] active:shadow-none active:translate-y-1 transition-all pb-2" onClick={() => handleInput('-')}>-</button>
+
+        {[4, 5, 6].map(n => <button key={n} className="bg-slate-200 hover:bg-white text-slate-900 font-black text-2xl lg:text-4xl rounded-xl shadow-[0_4px_0_#94a3b8] active:shadow-none active:translate-y-1 transition-all" onClick={() => handleInput(n)}>{n}</button>)}
+        <button className="bg-slate-700 hover:bg-slate-600 text-cyan-400 font-black text-2xl lg:text-4xl rounded-xl shadow-[0_4px_0_#334155] active:shadow-none active:translate-y-1 transition-all pb-1" onClick={() => handleInput('+')}>+</button>
+
+        {[1, 2, 3].map(n => <button key={n} className="bg-slate-200 hover:bg-white text-slate-900 font-black text-2xl lg:text-4xl rounded-xl shadow-[0_4px_0_#94a3b8] active:shadow-none active:translate-y-1 transition-all" onClick={() => handleInput(n)}>{n}</button>)}
+        <button className="bg-blue-600 hover:bg-blue-500 text-white font-black text-3xl lg:text-5xl rounded-xl shadow-[0_4px_0_#1e40af] active:shadow-none active:translate-y-1 transition-all pb-2" onClick={handleEqual}>=</button>
+
+        <button className="col-span-2 bg-slate-200 hover:bg-white text-slate-900 font-black text-2xl lg:text-4xl rounded-xl shadow-[0_4px_0_#94a3b8] active:shadow-none active:translate-y-1 transition-all" onClick={() => handleInput(0)}>0</button>
+        <button className="col-span-2 bg-green-600 hover:bg-green-500 text-white font-black text-xl lg:text-3xl rounded-xl shadow-[0_4px_0_#166534] active:shadow-none active:translate-y-1 transition-all tracking-widest" onClick={handleSubmit}>JAWAB</button>
+      </div>
+    </div>
+  );
+};
+
+function SiemalikApp() {
+  const [screen, setScreen] = useState('welcome'); 
+  const [gameMode, setGameMode] = useState(''); 
+  const [operation, setOperation] = useState('addition');
+  const [difficulty, setDifficulty] = useState('easy');
+  const [isMuted, setIsMuted] = useState(false);
+  
+  const [modalMsg, setModalMsg] = useState(null);
+  const [inputModal, setInputModal] = useState(null);
+
+  const [students, setStudents] = useState(INITIAL_STUDENTS);
+  const [teams, setTeams] = useState([
+    { id: 0, name: "Tim Cerdas", score: 0, correct: 0, wrong: 0, members: [] },
+    { id: 1, name: "Tim Hebat", score: 0, correct: 0, wrong: 0, members: [] },
+  ]);
+  
+  const [config, setConfig] = useState({ maxQuestions: 20, timePerQuestion: 60, numTeams: 2 });
+  const [globalStats, setGlobalStats] = useState({}); 
+  
+  const [currentQ, setCurrentQ] = useState(null);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [timer, setTimer] = useState(60);
+  const [activeStudentId, setActiveStudentId] = useState(null);
+  const [activeTeamIdx, setActiveTeamIdx] = useState(null);
+  const [attemptedTeams, setAttemptedTeams] = useState([]); // STATE BARU: Mencatat tim yang sudah mencoba & gagal di soal yang sama
+  const [arenaStatus, setArenaStatus] = useState('waiting'); 
+  const [feedback, setFeedback] = useState(null); 
+  const [countdown, setCountdown] = useState(3);
+
+  const timerRef = useRef(null);
+  const countdownRef = useRef(null);
+  const activeTeamRef = useRef(null); // Ref untuk menghindari stale state (keterlambatan state) di interval timer
+
+  useEffect(() => {
+    activeTeamRef.current = activeTeamIdx;
+  }, [activeTeamIdx]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
+    return () => {
+      clearInterval(timerRef.current);
+      clearInterval(countdownRef.current);
+      if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const showModal = (title, message, onConfirm, onCancel = null) => setModalMsg({ title, message, onConfirm, onCancel });
+  const showInputModal = (title, defaultValue, onConfirm) => setInputModal({ title, value: defaultValue, onConfirm });
+
+  const renderWelcome = () => (
+    <div className="flex flex-col items-center justify-center h-full p-4 lg:p-8 text-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-900/40 via-transparent to-transparent overflow-hidden relative">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
+        <div className="absolute top-[15%] left-[20%] text-5xl lg:text-7xl text-purple-500 animate-pulse font-bold">+</div>
+        <div className="absolute bottom-[20%] right-[15%] text-5xl lg:text-7xl text-blue-500 animate-bounce font-bold">-</div>
+        <div className="absolute top-[30%] right-[25%] text-5xl lg:text-7xl text-fuchsia-500 animate-spin font-bold">×</div>
+        <div className="absolute bottom-[40%] left-[25%] text-5xl lg:text-7xl text-green-500 animate-pulse font-bold">÷</div>
+      </div>
+      <div className={`${THEME.panelNeon} p-6 lg:p-12 rounded-[2.5rem] max-w-4xl w-full relative z-10 animate-fade-in-up border-4 border-purple-500/50 flex flex-col items-center max-h-full overflow-y-auto custom-scrollbar`}>
+        <div className="flex justify-center mb-4 lg:mb-6 shrink-0">
+          <div className="p-3 lg:p-4 bg-purple-600/20 rounded-full border-2 border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.3)]">
+            <Calculator className="w-12 h-12 lg:w-[70px] lg:h-[70px] text-purple-400" />
+          </div>
+        </div>
+        <h2 className="text-lg lg:text-2xl font-bold text-purple-300 mb-2 tracking-widest uppercase text-center">Pembelajaran Interaktif Matematika</h2>
+        <h1 className={`text-5xl md:text-7xl lg:text-[6rem] font-black mb-2 lg:mb-4 tracking-tighter ${THEME.glowPurple} drop-shadow-2xl text-center leading-tight`}>SIEMALIK</h1>
+        <p className="italic text-purple-200 mb-6 lg:mb-12 text-lg lg:text-2xl font-light text-center">"Belajar Berhitung, Bermain, dan Menjadi Juara!"</p>
+        <div className="flex flex-row gap-4 lg:gap-6 justify-center w-full shrink-0 flex-wrap">
+          <button onClick={() => { speakText("Selamat datang. Pilih mode permainan.", isMuted); setScreen('mode'); }}
+            className={`${THEME.primaryBtn} px-8 lg:px-16 py-4 lg:py-6 text-xl lg:text-2xl flex items-center justify-center gap-2 lg:gap-4 uppercase tracking-widest flex-1 min-w-[200px]`}>
+            <Play className="w-6 h-6 lg:w-9 lg:h-9" /> Mulai
+          </button>
+          <button onClick={() => setIsMuted(!isMuted)}
+            className={`${THEME.secondaryBtn} px-6 lg:px-10 py-4 lg:py-6 text-lg lg:text-xl flex items-center justify-center gap-2 lg:gap-3 uppercase tracking-widest flex-1 min-w-[200px]`}>
+            {isMuted ? <VolumeX className="w-6 h-6 lg:w-8 lg:h-8" /> : <Volume2 className="w-6 h-6 lg:w-8 lg:h-8" />} Suara {isMuted ? 'Off' : 'On'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderModeSelect = () => (
+    <div className="flex flex-col items-center justify-center h-full p-4 lg:p-8 overflow-hidden">
+      <h2 className={`text-3xl lg:text-5xl font-black mb-6 lg:mb-12 ${THEME.glowPurple} uppercase tracking-wider text-center drop-shadow-lg shrink-0`}>Pilih Mode Permainan</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-8 max-w-7xl w-full flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2">
+        {[
+          { id: 'individual', icon: User, color: 'blue', label: 'LATIHAN INDIVIDU', desc: 'Latihan mandiri kumpulkan poin pribadi.' },
+          { id: 'class', icon: Users, color: 'green', label: 'TANTANGAN KELAS', desc: 'Tantangan bergilir untuk 32 siswa.' },
+          { id: 'battle', icon: Crown, color: 'fuchsia', label: 'TEAM MATH BATTLE', desc: 'Kompetisi antar kelompok dengan skor tim.' }
+        ].map(m => (
+          <button key={m.id} onClick={() => { setGameMode(m.id); setScreen('operation'); }}
+            className={`${THEME.panel} p-4 lg:p-8 rounded-3xl hover:scale-[1.05] transition-all group flex flex-col items-center justify-center text-center border-b-8 border-${m.color}-600 shadow-xl bg-slate-800/80 hover:bg-slate-800 h-full`}>
+            <m.icon className={`w-16 h-16 lg:w-20 lg:h-20 text-${m.color}-400 mb-4 lg:mb-6 group-hover:animate-bounce drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]`} />
+            <h3 className={`text-xl lg:text-3xl font-black mb-2 lg:mb-4 text-${m.color}-100 uppercase tracking-widest leading-tight`}>{m.label}</h3>
+            <p className="text-slate-300 text-sm lg:text-lg">{m.desc}</p>
+          </button>
+        ))}
+      </div>
+      <button onClick={() => setScreen('welcome')} className="mt-6 lg:mt-12 shrink-0 text-slate-400 hover:text-white flex items-center gap-2 text-xl lg:text-2xl font-bold uppercase tracking-widest transition-colors">
+        <ChevronRight className="rotate-180 w-6 h-6 lg:w-8 lg:h-8"/> Kembali
+      </button>
+    </div>
+  );
+
+  const renderOperationSelect = () => {
+    const ops = [
+      { id: 'addition', label: 'PENJUMLAHAN', icon: PlusCircle, color: 'text-blue-400', border: 'border-blue-500' },
+      { id: 'subtraction', label: 'PENGURANGAN', icon: MinusCircle, color: 'text-red-400', border: 'border-red-500' },
+      { id: 'multiplication', label: 'PERKALIAN', icon: XCircle, color: 'text-green-400', border: 'border-green-500' },
+      { id: 'division', label: 'PEMBAGIAN', icon: DivideCircle, color: 'text-yellow-400', border: 'border-yellow-500' },
+    ];
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 lg:p-8 overflow-hidden">
+        <h2 className={`text-2xl lg:text-4xl font-black mb-4 lg:mb-8 ${THEME.glowPurple} uppercase tracking-widest text-center shrink-0`}>Pilih Operasi Hitung</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6 w-full max-w-[90%] mb-6 lg:mb-10 shrink-0">
+          {ops.map(op => (
+            <button key={op.id} onClick={() => setOperation(op.id)}
+              className={`${THEME.panel} p-4 lg:p-8 rounded-3xl flex flex-col items-center justify-center border-4 transition-all group
+                ${operation === op.id ? `border-purple-500 shadow-[0_0_30px_rgba(168,85,247,0.6)] scale-[1.05] bg-purple-900/50 z-10` : `border-transparent bg-slate-800/80 hover:${op.border}`}`}>
+              <op.icon className={`w-12 h-12 lg:w-16 lg:h-16 ${op.color} mb-2 lg:mb-4 group-hover:scale-110 transition-transform`} />
+              <span className="font-black text-sm lg:text-xl text-center tracking-widest">{op.label}</span>
+            </button>
+          ))}
+        </div>
+        <h3 className="text-xl lg:text-2xl font-bold mb-3 lg:mb-4 text-slate-300 uppercase tracking-widest shrink-0">Tingkat Kesulitan</h3>
+        <div className="flex flex-wrap justify-center gap-3 lg:gap-6 mb-6 lg:mb-12 bg-slate-900/80 p-4 lg:p-6 rounded-3xl border border-slate-700 shadow-xl shrink-0">
+          {[
+            {id: 'easy', label: 'MUDAH'}, {id: 'medium', label: 'SEDANG'}, {id: 'hard', label: 'SULIT'}
+          ].map(diff => (
+            <button key={diff.id} onClick={() => setDifficulty(diff.id)}
+              className={`px-6 lg:px-12 py-3 lg:py-5 rounded-2xl font-black text-sm lg:text-xl uppercase transition-all tracking-widest ${
+                difficulty === diff.id ? 'bg-purple-600 text-white shadow-[0_0_20px_rgba(147,51,234,0.6)] border-2 border-purple-300 scale-105' : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+              }`}>
+              {diff.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-4 lg:gap-8 shrink-0 flex-wrap justify-center w-full">
+          <button onClick={() => setScreen('mode')} className={`${THEME.secondaryBtn} px-6 lg:px-10 py-3 lg:py-5 text-sm lg:text-xl uppercase tracking-wider flex items-center justify-center gap-2 flex-1 max-w-[250px]`}><ChevronRight className="rotate-180 w-5 h-5"/> Kembali</button>
+          <button onClick={() => {
+            setQuestionCount(0); 
+            setActiveTeamIdx(0);
+            setFeedback(null);
+            
+            if (gameMode === 'individual') {
+                setActiveStudentId(1);
+                setArenaStatus('waiting');
+                setScreen('game');
+            } else if (gameMode === 'class') {
+                setActiveStudentId(null);
+                setScreen('game');
+                startCountdown(); // Langsung mulai soal otomatis!
+            } else { // battle
+                setActiveStudentId(null);
+                setScreen('config');
+            }
+          }} className={`${THEME.primaryBtn} px-6 lg:px-12 py-3 lg:py-5 text-sm lg:text-xl uppercase tracking-wider flex items-center justify-center gap-3 flex-1 max-w-[300px]`}>
+            {gameMode === 'battle' ? 'Pengaturan Tim' : 'Mulai Sekarang'} <ArrowRight className="w-5 h-5 lg:w-7 lg:h-7"/>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderConfig = () => {
+    const handleAssignTeam = (studentId) => {
+      if (gameMode !== 'battle') return;
+      setStudents(prev => prev.map(s => s.id === studentId ? { ...s, teamId: s.teamId === null ? 0 : (s.teamId + 1 >= config.numTeams ? null : s.teamId + 1) } : s));
+    };
+    return (
+      <div className="flex flex-col h-full p-4 lg:p-8 max-w-7xl mx-auto w-full overflow-hidden">
+        <div className="flex items-center gap-4 mb-4 lg:mb-8 shrink-0">
+          <Settings className="w-8 h-8 lg:w-12 lg:h-12 text-purple-400" />
+          <h2 className={`text-2xl lg:text-4xl font-black ${THEME.glowPurple} uppercase tracking-widest`}>Pengaturan Kelas</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4 lg:gap-8 flex-1 min-h-0 overflow-hidden">
+          <div className="space-y-4 lg:space-y-6 overflow-y-auto custom-scrollbar pr-2 pb-4">
+            <div className={`${THEME.panel} p-4 lg:p-6 rounded-3xl`}>
+              <h3 className="font-bold text-lg lg:text-xl mb-4 text-purple-300 border-b border-purple-500/30 pb-3 flex items-center gap-2"><Target/> Aturan Dasar</h3>
+              <label className="block text-xs lg:text-sm text-slate-400 mb-2 font-bold uppercase">Target Jumlah Soal:</label>
+              <input type="number" value={config.maxQuestions} onChange={(e) => setConfig({...config, maxQuestions: parseInt(e.target.value)||10})} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 lg:p-4 mb-4 lg:mb-6 text-white text-lg lg:text-xl font-bold focus:border-purple-500 outline-none" min="1" max="100" />
+              <label className="block text-xs lg:text-sm text-slate-400 mb-2 font-bold uppercase">Waktu per Soal (Detik):</label>
+              <input type="number" value={config.timePerQuestion} onChange={(e) => setConfig({...config, timePerQuestion: parseInt(e.target.value)||60})} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 lg:p-4 text-white text-lg lg:text-xl font-bold focus:border-purple-500 outline-none" min="10" max="300" />
+            </div>
+            {gameMode === 'battle' && (
+              <div className={`${THEME.panelNeon} p-4 lg:p-6 rounded-3xl`}>
+                <h3 className="font-bold text-lg lg:text-xl mb-4 text-fuchsia-300 border-b border-fuchsia-500/30 pb-3 flex items-center gap-2"><Users/> Pengaturan Tim</h3>
+                <select value={config.numTeams} onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setConfig({...config, numTeams: val});
+                    setStudents(prev => prev.map(s => s.teamId >= val ? {...s, teamId: null} : s));
+                  }} className="w-full bg-slate-950 border border-fuchsia-500/50 rounded-xl p-3 lg:p-4 mb-4 lg:mb-6 text-white text-lg lg:text-xl font-bold outline-none">
+                  {[2,3,4,5].map(n => <option key={n} value={n}>{n} Kelompok</option>)}
+                </select>
+                <div className="space-y-2 lg:space-y-3 mb-4 lg:mb-6">
+                  {Array.from({length: config.numTeams}).map((_, i) => (
+                    <input key={i} type="text" value={teams[i]?.name || ''} onChange={(e) => {
+                        const newTeams = [...teams];
+                        if(!newTeams[i]) newTeams[i] = {id: i, name: '', score:0, correct:0, members:[]};
+                        newTeams[i].name = e.target.value; setTeams(newTeams);
+                      }} className={`w-full bg-slate-950 border-2 rounded-xl p-2 lg:p-3 text-sm lg:text-lg font-bold outline-none text-white ${TEAM_STYLES[i] ? TEAM_STYLES[i].border : 'border-slate-700'}`} placeholder={`Nama Tim ${i+1}`} />
+                  ))}
+                </div>
+                <button onClick={() => {
+                  let t=0; setStudents(prev => prev.map(s => { const a = {...s, teamId: t}; t = (t+1)%config.numTeams; return a; }));
+                }} className={`${THEME.secondaryBtn} w-full py-3 lg:py-4 text-sm lg:text-lg uppercase tracking-widest flex justify-center items-center gap-2`}><Zap size={18}/> Bagi Otomatis</button>
+              </div>
+            )}
+          </div>
+          <div className={`${THEME.panel} p-4 lg:p-6 rounded-3xl h-full flex flex-col min-h-0`}>
+            <div className="flex justify-between items-end border-b border-purple-500/30 pb-2 lg:pb-4 mb-4 lg:mb-6 shrink-0">
+              <h3 className="font-black text-lg lg:text-2xl text-purple-300 uppercase tracking-widest">Daftar 32 Peserta</h3>
+              <span className="text-xs lg:text-sm text-slate-400 font-bold hidden md:inline">Klik absen untuk mengubah {gameMode==='battle'?'tim':'nama'}</span>
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 lg:gap-3 overflow-y-auto custom-scrollbar flex-1 pr-2 pb-4 min-h-0">
+              {students.map(student => {
+                let style = gameMode === 'battle' && student.teamId !== null && TEAM_STYLES[student.teamId] 
+                  ? `bg-gradient-to-br ${TEAM_STYLES[student.teamId].bg} border-2 ${TEAM_STYLES[student.teamId].border} text-white shadow-lg` 
+                  : 'bg-slate-800 border-2 border-slate-700 text-slate-300 hover:border-purple-400';
+                return (
+                  <div key={student.id} className="relative group flex items-stretch">
+                    <button onClick={() => gameMode === 'battle' ? handleAssignTeam(student.id) : showInputModal("Ubah Nama", student.name, (v) => { if(v) setStudents(p=>p.map(s=>s.id===student.id?{...s,name:v}:s)); setInputModal(null); })}
+                      className={`w-full aspect-square rounded-xl lg:rounded-2xl flex flex-col items-center justify-center transition-all p-1 lg:p-2 ${style}`}>
+                      <span className="font-black text-xl lg:text-3xl leading-none mb-1">{student.id}</span>
+                      <span className="text-[0.6rem] lg:text-xs uppercase truncate w-full font-bold">{student.name}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 lg:mt-8 flex justify-between shrink-0">
+          <button onClick={() => setScreen('operation')} className="text-slate-400 hover:text-white text-sm lg:text-xl font-bold uppercase tracking-wider flex items-center gap-2"><ChevronRight className="rotate-180 w-5 h-5"/> Kembali</button>
+          <button onClick={() => {
+              if (gameMode === 'battle') {
+                if (students.filter(s => s.teamId !== null).length === 0) return showModal("Peringatan", "Minimal satu siswa harus ditugaskan ke kelompok.", ()=>setModalMsg(null));
+                setTeams(Array.from({length: config.numTeams}, (_, i) => ({ id: i, name: teams[i]?.name || `Tim ${i+1}`, score: 0, correct: 0, wrong: 0, members: students.filter(s => s.teamId === i).map(s => s.id) })));
+              }
+              setQuestionCount(0); setActiveStudentId(null); setActiveTeamIdx(0); setArenaStatus('waiting'); setScreen('game');
+            }} className={`${THEME.primaryBtn} px-8 lg:px-14 py-3 lg:py-5 text-sm lg:text-2xl uppercase tracking-widest`}>MULAI</button>
+        </div>
+      </div>
+    );
+  };
+
+  const startCountdown = useCallback(() => {
+    setArenaStatus('countdown'); setCountdown(3); clearInterval(countdownRef.current);
+    speakText("Tiga, dua, satu, mulai!", isMuted);
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { clearInterval(countdownRef.current); generateNewQuestion(); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [operation, difficulty, isMuted]);
+
+  const generateNewQuestion = () => {
+    const q = generateMathProblem(operation, difficulty);
+    setCurrentQ(q); setTimer(config.timePerQuestion); setArenaStatus('playing');
+    setAttemptedTeams([]); // Reset daftar tim yang gagal untuk soal baru
+    speakText(q.spokenText, isMuted);
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimer(prev => {
+        if (prev <= 1) { clearInterval(timerRef.current); handleTimeOut(); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const updateScores = (isCorrect, isTimeout = false, explicitTeamIdx = undefined) => {
+    const teamIdxToUse = explicitTeamIdx !== undefined ? explicitTeamIdx : activeTeamRef.current;
+    
+    if (activeStudentId !== null) {
+      setStudents(prev => prev.map(s => 
+        s.id === activeStudentId 
+          ? { ...s, score: isCorrect ? s.score + 10 : s.score, correct: isCorrect ? s.correct + 1 : s.correct, attempts: s.attempts + 1 } 
+          : s
+      ));
+    } else if (gameMode === 'individual') {
+       setStudents(prev => prev.map(s => 
+         s.id === 1 
+           ? { ...s, score: isCorrect ? s.score + 10 : s.score, correct: isCorrect ? s.correct + 1 : s.correct, attempts: s.attempts + 1 } 
+           : s
+       ));
+    }
+
+    if (gameMode === 'battle' && teamIdxToUse !== null) {
+      setTeams(prev => prev.map((t, idx) => 
+        idx === teamIdxToUse 
+          ? { ...t, score: isCorrect ? t.score + 10 : t.score, correct: isCorrect ? t.correct + 1 : t.correct, wrong: (!isCorrect && !isTimeout) ? t.wrong + 1 : t.wrong } 
+          : t
+      ));
+    }
+  };
+
+  const checkAnswer = (ans) => {
+    if (arenaStatus !== 'playing' || !currentQ) return;
+    clearInterval(timerRef.current);
+    const isCorrect = Number(ans) === currentQ.answer;
+    const currentActiveTeam = activeTeamRef.current;
+    
+    if (isCorrect) {
+       setFeedback('correct');
+       speakText("Selamat Anda benar, silakan duduk kembali.", isMuted);
+       updateScores(true, false, currentActiveTeam);
+    } else {
+       updateScores(false, false, currentActiveTeam);
+       
+       if (gameMode === 'battle') {
+           speakText("Maaf Anda salah, soal dilempar ke kelompok lain.", isMuted);
+           setAttemptedTeams(prev => {
+               // Tambah kelompok saat ini ke daftar gagal
+               const newAttempted = currentActiveTeam !== null && !prev.includes(currentActiveTeam) 
+                   ? [...prev, currentActiveTeam] : prev;
+                   
+               // Jika semua kelompok sudah gagal menjawab
+               if (newAttempted.length >= config.numTeams) {
+                   setFeedback('wrong'); 
+               } else {
+                   // LANGSUNG LEMPAR KE TIM LAIN! 
+                   setActiveTeamIdx(null); // Lepas kuncian tim
+                   setTimer(config.timePerQuestion); // Beri waktu lagi untuk rebutan
+                   timerRef.current = setInterval(() => {
+                     setTimer(prevT => {
+                       if (prevT <= 1) { clearInterval(timerRef.current); handleTimeOut(); return 0; }
+                       return prevT - 1;
+                     });
+                   }, 1000);
+               }
+               return newAttempted;
+           });
+       } else {
+           setFeedback('wrong');
+           speakText("Maaf Anda salah, silakan hitung kembali.", isMuted);
+       }
+    }
+  };
+
+  const handleTimeOut = () => {
+    if (arenaStatus !== 'playing') return;
+    const currentActiveTeam = activeTeamRef.current;
+    
+    if (gameMode === 'battle') {
+        updateScores(false, true, currentActiveTeam);
+        
+        if (currentActiveTeam === null) {
+            // Waktu habis dan tidak ada satu pun tim yang merebut
+            speakText("Waktu rebutan habis.", isMuted);
+            setFeedback('timeout');
+            return;
+        }
+
+        speakText("Waktu habis, soal dilempar ke kelompok lain.", isMuted);
+        setAttemptedTeams(prev => {
+            const newAttempted = !prev.includes(currentActiveTeam) ? [...prev, currentActiveTeam] : prev;
+            if (newAttempted.length >= config.numTeams) {
+                setFeedback('timeout');
+            } else {
+                setActiveTeamIdx(null); // Langsung lempar
+                setTimer(config.timePerQuestion);
+                clearInterval(timerRef.current);
+                timerRef.current = setInterval(() => {
+                  setTimer(prevT => {
+                    if (prevT <= 1) { clearInterval(timerRef.current); handleTimeOut(); return 0; }
+                    return prevT - 1;
+                  });
+                }, 1000);
+            }
+            return newAttempted;
+        });
+    } else {
+        setFeedback('timeout'); 
+        speakText("Waktu habis.", isMuted);
+        updateScores(false, true);
+    }
+  };
+
+  const handleRetry = () => {
+    setFeedback(null);
+    if (gameMode === 'battle') setActiveTeamIdx(null); // Lepas kembali status aktif agar direbut
+    setArenaStatus('playing');
+    setTimer(config.timePerQuestion); // Reset timer untuk tim yang baru mencoba
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimer(prev => {
+        if (prev <= 1) { clearInterval(timerRef.current); handleTimeOut(); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const nextTurn = () => {
+    clearInterval(timerRef.current); setFeedback(null); setQuestionCount(prev => prev + 1);
+    if (questionCount + 1 >= config.maxQuestions) return endGame();
+    
+    setActiveStudentId(null);
+    setActiveTeamIdx(null);
+    
+    if (gameMode === 'individual') {
+      setArenaStatus('waiting');
+    } else {
+      startCountdown(); 
+    }
+  };
+
+  const endGame = () => {
+    clearInterval(timerRef.current); setArenaStatus('waiting'); setFeedback(null);
+    setStudents(prev => prev.map(s => {
+        let newBadges = [...s.badges];
+        BADGE_DEFINITIONS.forEach(b => { if (!newBadges.includes(b.id) && b.req(s, globalStats[s.id], gameMode === 'battle', true)) newBadges.push(b.id); });
+        return {...s, badges: newBadges};
+    }));
+    speakText("Permainan selesai.", isMuted); setScreen('result');
+  };
+
+  const renderGameArena = () => {
+    let activeName = "Pilih Siswa / Tekan Play";
+    if (gameMode === 'battle') activeName = activeTeamIdx !== null ? (teams[activeTeamIdx]?.name || "Kelompok") : "SIAPA CEPAT DIA DAPAT!";
+    else if (gameMode === 'class' && activeStudentId === null) activeName = "Siapa Cepat Dia Dapat!";
+    else if (activeStudentId) activeName = students.find(s=>s.id === activeStudentId)?.name || "Siswa";
+    else if (gameMode === 'individual') activeName = "Latihan Mandiri"; 
+
+    const canStartQuestion = true; 
+    const activeTeamStyle = gameMode === 'battle' && TEAM_STYLES[activeTeamIdx] ? TEAM_STYLES[activeTeamIdx] : null;
+
+    let calcDisabled = arenaStatus !== 'playing';
+    let calcLockMsg = "(Pastikan Soal Sudah Dimulai)";
+    
+    if (gameMode === 'battle' && arenaStatus === 'playing' && activeTeamIdx === null) {
+        calcDisabled = true;
+        calcLockMsg = "(KLIK TIM ANDA DI BAWAH)";
+    } else if (gameMode === 'class' && arenaStatus === 'playing' && activeStudentId === null) {
+        calcDisabled = true;
+        calcLockMsg = "(PILIH ABSEN DAHULU)";
+    }
+
+    return (
+      <div className="flex flex-col h-full w-full p-2 lg:p-4 xl:p-6 bg-slate-950 relative z-10 overflow-hidden">
+        
+        {/* Header Bar */}
+        <div className={`${THEME.panelNeon} px-4 py-2 lg:px-6 lg:py-4 rounded-xl lg:rounded-3xl flex justify-between items-center mb-2 lg:mb-4 shrink-0 z-10 border-b-4 border-purple-500 shadow-xl`}>
+          <div className="flex items-center gap-3 lg:gap-6">
+            <h1 className="text-xl lg:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-500 tracking-widest flex items-center gap-1 lg:gap-2"><Rotate3d className="w-5 h-5 lg:w-8 lg:h-8"/> SIEMALIK</h1>
+            <div className="h-6 lg:h-10 w-1 bg-slate-700 rounded-full"></div>
+            <div className="flex flex-col">
+              <span className="text-[0.6rem] lg:text-xs font-black uppercase text-slate-400 tracking-widest">{gameMode === 'battle' ? 'TEAM BATTLE' : gameMode === 'class' ? 'TANTANGAN KELAS' : 'LATIHAN'}</span>
+              <span className="text-sm lg:text-xl font-bold text-white capitalize leading-tight">{operation} • {difficulty}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 lg:gap-4">
+            <div className="bg-slate-950 px-3 py-1 lg:px-6 lg:py-2 rounded-lg lg:rounded-xl font-black text-sm lg:text-2xl border-2 border-slate-700 shadow-inner tracking-widest text-slate-300">
+               SOAL <span className="text-purple-400">{questionCount + 1}</span> / {config.maxQuestions}
+            </div>
+            <button onClick={() => showModal("Akhiri Permainan?", "Data akan disimpan.", endGame, ()=>setModalMsg(null))} className={`${THEME.dangerBtn} px-3 py-1.5 lg:px-6 lg:py-3 rounded-lg lg:rounded-xl font-black text-xs lg:text-base uppercase tracking-widest flex items-center gap-1 lg:gap-2`}><XCircle className="w-4 h-4 lg:w-5 lg:h-5"/> Akhiri</button>
+          </div>
+        </div>
+
+        {/* 16:9 Arena - Left (Question/Status) 65%, Right (Calculator) 35% */}
+        <div className="flex-1 flex gap-2 lg:gap-6 min-h-0 overflow-hidden">
+          
+          {/* LEFT SIDE - QUESTION & STATUS */}
+          <div className="w-[60%] lg:w-[65%] flex flex-col gap-2 lg:gap-4 min-h-0">
+            
+            {/* Status Top Bar */}
+            <div className="flex gap-2 lg:gap-4 h-16 lg:h-24 shrink-0">
+              <div className={`${THEME.panel} rounded-xl lg:rounded-[2rem] flex-1 flex flex-col justify-center p-3 lg:p-6 overflow-hidden relative border-l-4 lg:border-l-8 ${activeTeamStyle ? activeTeamStyle.border : 'border-blue-500'}`}>
+                {activeTeamStyle && <div className={`absolute inset-0 opacity-10 bg-gradient-to-r ${activeTeamStyle.bg}`}></div>}
+                <div className="z-10 flex justify-between items-center h-full">
+                  <div className="flex flex-col justify-center">
+                    <div className="text-[0.6rem] lg:text-sm text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1 lg:gap-2 mb-0.5"><Users className="w-3 h-3 lg:w-[18px] lg:h-[18px]"/> {gameMode === 'battle' && activeTeamIdx === null ? "REBUTAN!" : "Giliran Saat Ini"}</div>
+                    <h3 className={`text-lg lg:text-3xl font-black ${activeTeamStyle ? activeTeamStyle.glow : 'text-white'} uppercase tracking-widest leading-none truncate`}>{activeName}</h3>
+                  </div>
+                  {(gameMode === 'class' || gameMode === 'battle') && (
+                    <button onClick={() => showModal("Pilih Siswa", 
+                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 lg:gap-3 mt-4 overflow-y-auto max-h-[50vh] p-2 custom-scrollbar">
+                          {students.filter(s => gameMode !== 'battle' || s.teamId === activeTeamIdx).map(s => (
+                              <button key={s.id} onClick={() => { setActiveStudentId(s.id); setModalMsg(null); }} className={`p-2 lg:p-4 rounded-xl border-2 flex flex-col items-center justify-center transition-all ${activeStudentId===s.id ? 'bg-purple-600 border-white shadow-lg scale-105' : 'bg-slate-800 border-slate-700 hover:border-purple-400'}`}>
+                                <span className="font-black text-lg lg:text-2xl">{s.id}</span>
+                              </button>
+                            ))}
+                        </div>, null, ()=>setModalMsg(null))} 
+                      className={`${(gameMode === 'class' && activeStudentId === null && arenaStatus === 'playing') ? 'bg-fuchsia-600 hover:bg-fuchsia-500 text-white shadow-[0_0_20px_rgba(217,70,239,0.5)] border-2 border-fuchsia-400 animate-pulse' : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-white'} px-2 py-1 lg:px-6 lg:py-2 rounded-lg lg:rounded-2xl flex flex-col justify-center items-center transition-all shrink-0`}>
+                      <User className="w-5 h-5 lg:w-8 lg:h-8 mb-0.5 lg:mb-1" />
+                      <span className="text-[0.5rem] lg:text-[0.6rem] font-black uppercase tracking-widest text-center leading-tight">PILIH<br className="lg:hidden"/> ABSEN</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className={`${THEME.panel} rounded-xl lg:rounded-[2rem] w-20 lg:w-32 flex flex-col items-center justify-center relative overflow-hidden border-2 lg:border-4 shrink-0 ${timer <= 10 && arenaStatus === 'playing' ? 'border-red-500 bg-red-950 animate-pulse' : 'border-slate-700'}`}>
+                {arenaStatus === 'playing' && <div className={`absolute bottom-0 left-0 w-full transition-all duration-1000 ease-linear opacity-20 ${timer <= 10 ? 'bg-red-600' : timer <= 20 ? 'bg-yellow-500' : 'bg-purple-600'}`} style={{height: `${(timer/config.timePerQuestion)*100}%`}}></div>}
+                <span className="text-[0.6rem] lg:text-sm text-slate-400 font-bold uppercase tracking-widest mb-0.5 z-10 flex items-center"><Clock className="w-3 h-3 lg:w-4 lg:h-4 mr-1"/> Waktu</span>
+                <span className={`text-3xl lg:text-5xl font-black z-10 tabular-nums tracking-tighter leading-none ${timer <= 10 && arenaStatus === 'playing' ? 'text-red-400' : 'text-white'}`}>{arenaStatus === 'playing' ? timer : '--'}</span>
+              </div>
+            </div>
+
+            {/* Main Question Area */}
+            <div className={`${THEME.panelNeon} flex-1 rounded-2xl lg:rounded-[2.5rem] flex flex-col items-center justify-center relative overflow-hidden group border-2 lg:border-4 border-slate-700 min-h-0`}>
+              {arenaStatus === 'waiting' && (
+                <div className="text-center z-10 px-4">
+                  <button disabled={!canStartQuestion} onClick={startCountdown} className={`w-20 h-20 lg:w-32 lg:h-32 mx-auto rounded-full flex items-center justify-center mb-4 lg:mb-8 border-4 transition-all duration-300 ${canStartQuestion ? 'bg-purple-600/30 border-purple-500 hover:scale-110 hover:bg-purple-600 shadow-[0_0_50px_rgba(168,85,247,0.5)] cursor-pointer' : 'bg-slate-800/50 border-slate-700 opacity-50 cursor-not-allowed'}`}>
+                    <Play className={`w-10 h-10 lg:w-16 lg:h-16 ${canStartQuestion ? 'text-white' : 'text-slate-600'} ml-2 lg:ml-4`} />
+                  </button>
+                  <h2 className={`text-lg lg:text-3xl font-black uppercase tracking-widest leading-tight ${canStartQuestion ? THEME.glowPurple : 'text-slate-500'}`}>{canStartQuestion ? 'KLIK UNTUK MEMULAI SOAL' : 'PILIH ABSEN SISWA DAHULU'}</h2>
+                </div>
+              )}
+              {arenaStatus === 'countdown' && <div className="text-7xl lg:text-[10rem] font-black text-fuchsia-500 drop-shadow-[0_0_50px_rgba(217,70,239,1)] animate-bounce z-10">{countdown}</div>}
+              {arenaStatus === 'playing' && currentQ && (
+                <div className="text-center w-full z-10 animate-fade-in flex flex-col items-center justify-center h-full p-4">
+                  <div className="text-4xl md:text-5xl lg:text-[5vw] xl:text-[6vw] font-black tracking-widest text-white drop-shadow-[0_0_30px_rgba(168,85,247,0.8)] font-mono leading-none flex flex-wrap justify-center items-center gap-x-2 lg:gap-x-4">
+                    <span>{currentQ.num1.toLocaleString('id-ID')}</span>
+                    <span className="text-purple-400">{currentQ.operatorString}</span>
+                    <span>{currentQ.num2.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="text-3xl lg:text-6xl font-black text-slate-400 mt-2 lg:mt-6 tracking-widest animate-pulse">= ?</div>
+                </div>
+              )}
+              {feedback && (
+                <div className={`absolute inset-0 flex flex-col items-center justify-center backdrop-blur-sm z-20 animate-fade-in ${feedback === 'correct' ? 'bg-green-950/90' : feedback === 'wrong' ? 'bg-red-950/90' : 'bg-yellow-950/90'}`}>
+                  
+                  {}
+                  <div className="mb-4 lg:mb-8 text-3xl md:text-4xl lg:text-6xl font-mono font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] bg-black/40 px-6 lg:px-12 py-4 lg:py-8 rounded-3xl border-2 border-white/20 flex flex-wrap justify-center items-center gap-3 lg:gap-6">
+                     <span>{currentQ?.num1.toLocaleString('id-ID')}</span>
+                     <span className="text-purple-400">{currentQ?.operatorString}</span>
+                     <span>{currentQ?.num2.toLocaleString('id-ID')}</span>
+                     <span className="text-slate-400">=</span>
+                     <span className={feedback === 'correct' ? 'text-green-400' : 'text-white'}>{currentQ?.answer.toLocaleString('id-ID')}</span>
+                  </div>
+
+                  <div className="flex items-center gap-4 mb-2 lg:mb-4">
+                    {feedback === 'correct' ? <CheckCircle className="w-10 h-10 lg:w-16 lg:h-16 text-green-400 animate-bounce drop-shadow-[0_0_30px_rgba(34,197,94,1)]" /> : feedback === 'wrong' ? <XCircle className="w-10 h-10 lg:w-16 lg:h-16 text-red-500 animate-shake drop-shadow-[0_0_30px_rgba(239,68,68,1)]" /> : <Clock className="w-10 h-10 lg:w-16 lg:h-16 text-yellow-400 animate-pulse" />}
+                    <h2 className={`text-2xl lg:text-4xl font-black tracking-widest uppercase text-center ${feedback === 'correct' ? 'text-green-300' : feedback === 'wrong' ? 'text-red-300' : 'text-yellow-300'}`}>{feedback === 'correct' ? 'JAWABAN BENAR!' : feedback === 'wrong' ? 'JAWABAN SALAH!' : 'WAKTU HABIS!'}</h2>
+                  </div>
+
+                  <p className={`text-xl lg:text-3xl font-bold mb-6 lg:mb-10 tracking-widest ${feedback === 'correct' ? 'text-green-300 animate-pulse' : 'text-slate-300'}`}>
+                    {feedback === 'correct' ? '+10 POIN' : 'Poin +0'}
+                  </p>
+                  
+                  <div className="flex gap-4">
+                     {feedback === 'correct' ? (
+                        <button onClick={nextTurn} className={`${THEME.primaryBtn} px-8 lg:px-16 py-3 lg:py-6 text-lg lg:text-2xl uppercase tracking-widest flex items-center gap-2 lg:gap-4 shadow-2xl`}>Lanjut <ArrowRight className="w-6 h-6 lg:w-8 lg:h-8"/></button>
+                     ) : (
+                        gameMode === 'battle' ? (
+                            attemptedTeams.length + 1 >= config.numTeams ? (
+                                <button onClick={nextTurn} className={`${THEME.secondaryBtn} px-8 lg:px-16 py-3 lg:py-6 text-lg lg:text-2xl uppercase tracking-widest flex items-center gap-2 lg:gap-4 shadow-2xl`}>Semua Tim Gagal, Lanjut <ArrowRight className="w-6 h-6 lg:w-8 lg:h-8"/></button>
+                            ) : (
+                                <button onClick={handleRetry} className={`${THEME.primaryBtn} px-8 lg:px-16 py-3 lg:py-6 text-lg lg:text-2xl uppercase tracking-widest flex items-center gap-2 lg:gap-4 shadow-2xl`}>Lempar ke Tim Lain <RotateCcw className="w-6 h-6 lg:w-8 lg:h-8"/></button>
+                            )
+                        ) : (
+                            <button onClick={handleRetry} className={`${THEME.secondaryBtn} px-8 lg:px-16 py-3 lg:py-6 text-lg lg:text-2xl uppercase tracking-widest flex items-center gap-2 lg:gap-4 shadow-2xl`}>Coba Lagi <RotateCcw className="w-6 h-6 lg:w-8 lg:h-8"/></button>
+                        )
+                     )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Team Scores (Bottom Bar) */}
+            {gameMode === 'battle' && (
+              <div className="h-16 lg:h-24 flex gap-2 lg:gap-4 shrink-0">
+                {teams.map((team, idx) => {
+                  const style = TEAM_STYLES[idx] || {};
+                  const hasAttempted = attemptedTeams.includes(idx);
+                  const isActive = activeTeamIdx === idx;
+                  const canGrab = arenaStatus === 'playing' && activeTeamIdx === null && !hasAttempted;
+                  
+                  return (
+                    <button 
+                      key={team.id} 
+                      disabled={!canGrab && !isActive}
+                      onClick={() => canGrab && setActiveTeamIdx(idx)}
+                      className={`flex-1 rounded-xl lg:rounded-[1.5rem] p-2 lg:p-4 flex flex-col justify-center relative border-2 lg:border-4 transition-all duration-300 overflow-hidden text-left focus:outline-none
+                        ${isActive ? `bg-gradient-to-br ${style.bg} border-white shadow-[0_0_30px_rgba(255,255,255,0.4)] z-10 scale-105` 
+                        : hasAttempted ? 'bg-red-950/40 border-red-900/50 opacity-40 grayscale cursor-not-allowed'
+                        : canGrab ? 'bg-slate-800 border-purple-500 hover:bg-slate-700 animate-pulse cursor-pointer shadow-[0_0_15px_rgba(168,85,247,0.4)]' 
+                        : 'bg-slate-900 border-slate-800 opacity-60 grayscale-[50%]'}`}
+                    >
+                      {hasAttempted && <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20"><XCircle className="w-8 h-8 text-red-500 opacity-80"/></div>}
+                      <div className="flex justify-between items-center mb-1 lg:mb-2 z-10 relative">
+                        <span className={`text-[0.6rem] lg:text-sm font-black truncate uppercase tracking-widest ${isActive ? 'text-white' : 'text-slate-300'}`}>{team.name}</span>
+                        {isActive && <span className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-white animate-ping"></span>}
+                      </div>
+                      <div className="flex justify-between items-end z-10 relative">
+                        <span className={`text-xl lg:text-4xl font-black tracking-tighter leading-none ${isActive ? 'text-white' : 'text-slate-400'}`}>{team.score}</span>
+                        <span className="text-[0.5rem] lg:text-xs font-bold opacity-90 bg-black/40 px-1 lg:px-2 py-0.5 lg:py-1 rounded text-green-300">✔ {team.correct}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT SIDE - CALCULATOR (35%) */}
+          <div className="w-[40%] lg:w-[35%] flex flex-col min-h-0">
+            <CalculatorPad key={`calc-${activeTeamIdx}-${questionCount}`} onAnswer={checkAnswer} disabled={calcDisabled} lockMessage={calcLockMsg} />
+          </div>
+
+        </div>
+      </div>
+    );
+  };
+
+  const renderResult = () => {
+    const sortedStudents = [...students].sort((a, b) => b.score - a.score || b.correct - a.correct);
+    const sortedTeams = [...teams].sort((a, b) => b.score - a.score || b.correct - a.correct);
+    const totalCorrect = students.reduce((sum, s) => sum + s.correct, 0);
+    const totalAttempts = students.reduce((sum, s) => sum + s.attempts, 0);
+    const totalPoints = students.reduce((sum, s) => sum + s.score, 0);
+
+    return (
+      <div className="h-full p-4 lg:p-8 flex flex-col items-center overflow-hidden">
+        <div className="text-center mb-4 lg:mb-8 shrink-0">
+          <h1 className={`text-4xl lg:text-6xl font-black mb-2 lg:mb-4 uppercase tracking-tighter ${THEME.glowPurple} leading-none`}>PERMAINAN SELESAI</h1>
+          <p className="text-lg lg:text-2xl text-slate-300 font-bold tracking-widest uppercase flex items-center justify-center gap-2 lg:gap-3"><Medal className="text-yellow-400 w-5 h-5 lg:w-8 lg:h-8"/> {gameMode} MODE</p>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 w-full max-w-7xl mb-4 lg:mb-8 shrink-0">
+           {[{label: 'Total Poin', val: totalPoints, icon: Star, color: 'text-yellow-400'},{label: 'Jawaban Benar', val: totalCorrect, icon: CheckCircle, color: 'text-green-400'},{label: 'Total Soal', val: totalAttempts, icon: Target, color: 'text-blue-400'},{label: 'Akurasi', val: totalAttempts ? Math.round((totalCorrect/totalAttempts)*100)+'%' : '0%', icon: BarChart3, color: 'text-fuchsia-400'}].map((s, i) => (
+             <div key={i} className={`${THEME.panel} p-3 lg:p-6 rounded-2xl lg:rounded-3xl flex items-center gap-2 lg:gap-4`}><div className={`p-2 lg:p-4 bg-slate-950 rounded-xl lg:rounded-2xl border-2 border-slate-700 ${s.color}`}><s.icon className="w-6 h-6 lg:w-9 lg:h-9" /></div><div><div className="text-[0.6rem] lg:text-sm font-bold text-slate-400 uppercase tracking-widest">{s.label}</div><div className={`text-2xl lg:text-4xl font-black ${s.color}`}>{s.val}</div></div></div>
+           ))}
+        </div>
+        <div className="flex flex-col md:flex-row gap-4 lg:gap-8 w-full max-w-7xl flex-1 min-h-0 overflow-hidden">
+          <div className={`${THEME.panel} p-4 lg:p-8 rounded-2xl lg:rounded-3xl flex flex-col flex-1 min-h-0`}>
+            <h2 className="text-lg lg:text-2xl font-black flex items-center gap-2 lg:gap-3 mb-3 lg:mb-6 pb-2 lg:pb-4 border-b-2 border-purple-500/30 uppercase tracking-widest text-white shrink-0"><Trophy className="text-yellow-400 w-6 h-6 lg:w-8 lg:h-8"/> Leaderboard</h2>
+            <div className="overflow-y-auto custom-scrollbar flex-1 pr-2 lg:pr-4 space-y-2 lg:space-y-4">
+              {gameMode === 'battle' && sortedTeams.map((team, idx) => (
+                <div key={team.id} className={`flex items-center p-3 lg:p-4 rounded-xl lg:rounded-2xl border-2 ${idx === 0 ? `bg-gradient-to-r ${TEAM_STYLES[team.id]?.bg || 'bg-slate-800'} border-white shadow-lg` : 'bg-slate-900 border-slate-700'}`}>
+                  <div className="w-8 h-8 lg:w-12 lg:h-12 rounded-full flex items-center justify-center font-black text-lg lg:text-2xl mr-2 lg:mr-4 bg-black/40 text-white shrink-0">{idx + 1}</div>
+                  <div className="flex-1 font-black text-sm lg:text-xl text-white uppercase tracking-wider truncate">{team.name}</div>
+                  <div className="text-xl lg:text-4xl font-black text-white shrink-0">{team.score}</div>
+                </div>
+              ))}
+              <h3 className="text-xs lg:text-sm font-black text-slate-400 mt-4 lg:mt-6 mb-2 lg:mb-4 uppercase tracking-widest shrink-0">Top Individu</h3>
+              {sortedStudents.filter(s=>s.attempts>0).slice(0, 10).map((s, idx) => (
+                <div key={s.id} className="flex items-center bg-slate-900 p-3 lg:p-4 rounded-xl lg:rounded-2xl border-2 border-slate-800">
+                  <span className={`w-6 lg:w-8 text-center font-black text-lg lg:text-2xl shrink-0 ${idx===0?'text-yellow-400':idx===1?'text-slate-300':idx===2?'text-amber-600':'text-slate-500'}`}>{idx + 1}</span>
+                  <div className="flex-1 ml-2 lg:ml-4 overflow-hidden"><div className="font-bold text-sm lg:text-lg text-white truncate">{s.name} <span className="text-[0.6rem] lg:text-xs bg-slate-800 px-1.5 py-0.5 rounded-md text-slate-400 ml-1">#{s.id}</span></div></div>
+                  <div className="text-right shrink-0"><div className="font-black text-lg lg:text-2xl text-purple-400">{s.score} <span className="text-[0.6rem] lg:text-xs text-slate-500">PTS</span></div></div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className={`${THEME.panel} p-4 lg:p-8 rounded-2xl lg:rounded-3xl flex flex-col flex-1 min-h-0`}>
+            <h2 className="text-lg lg:text-2xl font-black flex items-center gap-2 lg:gap-3 mb-3 lg:mb-6 uppercase tracking-widest text-white shrink-0"><BarChart3 className="text-blue-400 w-6 h-6 lg:w-8 lg:h-8"/> Grafik Skor</h2>
+            <div className="flex-1 bg-slate-950 rounded-xl lg:rounded-2xl p-2 lg:p-6 border-2 border-slate-800 shadow-inner min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={gameMode === 'battle' ? sortedTeams : sortedStudents.filter(s=>s.attempts>0).slice(0,10)} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} dy={10} fontWeight="bold" />
+                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} dx={-10} fontWeight="bold" />
+                  <Tooltip cursor={{fill: 'rgba(147, 51, 234, 0.1)'}} contentStyle={{backgroundColor: '#0f172a', border: '2px solid #334155', borderRadius: '12px', fontWeight: 'bold', color: '#fff', fontSize: '12px'}} />
+                  <Bar dataKey="score" name="Poin" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                    {(gameMode === 'battle' ? sortedTeams : sortedStudents).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={gameMode === 'battle' ? (TEAM_STYLES[entry.id]?.hex || '#475569') : '#a855f7'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 lg:mt-8 flex gap-3 lg:gap-6 justify-end shrink-0">
+              <button onClick={() => setScreen('welcome')} className={`${THEME.secondaryBtn} px-4 lg:px-10 py-3 lg:py-5 text-sm lg:text-xl uppercase tracking-widest`}>Ke Menu</button>
+              <button onClick={() => setScreen('mode')} className={`${THEME.primaryBtn} px-6 lg:px-12 py-3 lg:py-5 text-sm lg:text-xl uppercase tracking-widest flex items-center gap-2 lg:gap-3`}><RotateCcw className="w-5 h-5 lg:w-6 lg:h-6"/> Main Lagi</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* Peringatan Portrait (Hanya Muncul Jika HP Berdiri) */}
+      <div className="portrait:flex landscape:hidden fixed inset-0 bg-slate-950 z-[9999] flex-col items-center justify-center text-center p-8 selection:bg-purple-500/30">
+        <RotateCcw className="w-16 h-16 lg:w-20 lg:h-20 text-purple-500 mb-8 animate-spin-slow" />
+        <h2 className="text-3xl lg:text-4xl font-black text-white mb-4 uppercase tracking-widest">Harap Putar Layar</h2>
+        <p className="text-lg lg:text-xl text-slate-400 max-w-md">SIEMALIK dirancang khusus untuk mode Landscape (Miring). Putar HP/Tablet Anda untuk pengalaman bermain dan kalkulator yang optimal.</p>
+      </div>
+
+      {/* Frame 16:9 Utama */}
+      <div className="landscape:flex portrait:hidden fixed inset-0 bg-black items-center justify-center font-sans selection:bg-purple-500/30 overflow-hidden">
+        <div className="relative w-full h-full max-w-[177.78vh] max-h-[56.25vw] aspect-video bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950 overflow-hidden shadow-[0_0_50px_rgba(168,85,247,0.2)]">
+          {screen === 'welcome' && renderWelcome()}
+          {screen === 'mode' && renderModeSelect()}
+          {screen === 'operation' && renderOperationSelect()}
+          {screen === 'config' && renderConfig()}
+          {screen === 'game' && renderGameArena()}
+          {screen === 'result' && renderResult()}
+
+          {/* Modal Overlay */}
+          {modalMsg && (
+            <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
+              <div className={`${THEME.panelNeon} p-10 rounded-3xl max-w-lg w-full text-center shadow-2xl scale-in border-4 border-purple-500`}>
+                <Info size={60} className="text-purple-400 mx-auto mb-6"/>
+                <h3 className="text-3xl font-black mb-6 text-white uppercase tracking-widest">{modalMsg.title}</h3>
+                <div className="text-slate-300 mb-10 text-xl font-bold">{modalMsg.message}</div>
+                <div className="flex justify-center gap-6">
+                  {modalMsg.onCancel && <button onClick={modalMsg.onCancel} className={`${THEME.secondaryBtn} px-10 py-4 text-xl uppercase tracking-wider`}>Batal</button>}
+                  <button onClick={modalMsg.onConfirm || (()=>setModalMsg(null))} className={`${THEME.primaryBtn} px-14 py-4 text-xl uppercase tracking-widest`}>OK</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {inputModal && (
+            <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
+              <div className={`${THEME.panelNeon} p-10 rounded-3xl max-w-md w-full text-center shadow-2xl scale-in border-4 border-purple-500`}>
+                 <h3 className="text-2xl font-black mb-8 text-white uppercase tracking-widest">{inputModal.title}</h3>
+                 <input autoFocus type="text" defaultValue={inputModal.value} id="customInputModalField" className="w-full bg-slate-950 border-2 border-purple-500 rounded-xl p-5 mb-10 text-white text-2xl font-bold focus:border-purple-300 outline-none text-center shadow-inner" onKeyDown={(e) => e.key === 'Enter' && inputModal.onConfirm(e.target.value)} />
+                 <div className="flex gap-6">
+                   <button onClick={() => setInputModal(null)} className={`${THEME.secondaryBtn} flex-1 py-4 text-xl uppercase tracking-wider`}>Batal</button>
+                   <button onClick={() => inputModal.onConfirm(document.getElementById('customInputModalField').value)} className={`${THEME.primaryBtn} flex-1 py-4 text-xl uppercase tracking-widest`}>Simpan</button>
+                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@800&display=swap');
+        body { font-family: 'Inter', sans-serif; margin: 0; background: #000; overflow: hidden; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .custom-scrollbar::-webkit-scrollbar { width: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.8); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(147, 51, 234, 0.8); border-radius: 10px; }
+        @keyframes fade-in-up { 0% { opacity: 0; transform: translateY(30px); } 100% { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in-up { animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+        @keyframes scale-in { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .scale-in { animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-15px); } 40%, 80% { transform: translateX(15px); } }
+        .animate-shake { animation: shake 0.4s ease-in-out; }
+      `}} />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <SiemalikApp />
+    </ErrorBoundary>
+  );
+}
